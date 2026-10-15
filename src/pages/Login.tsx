@@ -1,0 +1,109 @@
+import { Building2, Eye, EyeOff, FileText, MapPin, Users } from 'lucide-react'
+import { useState, type FormEvent } from 'react'
+import { Navigate, useLocation, useNavigate } from 'react-router-dom'
+import { api, ApiError } from '../api/client'
+import type { TokenResponse } from '../api/types'
+import { useAuth } from '../auth/AuthContext'
+import { ThemeCycleButton } from '../components/ThemeToggle'
+import { Alert, Field } from '../components/ui'
+import { formatDocument, onlyDigits } from '../lib/format'
+
+// A redefinição de senha (código por e-mail) continua no painel web.
+const WEB_URL = import.meta.env.VITE_WEB_URL ?? ''
+
+// Entra a conta do associado (CPF/CNPJ) ou a de um usuário marcado como
+// administrador do associado (CPF). A senha inicial é o próprio documento.
+export default function Login() {
+  const { me, login } = useAuth()
+  const navigate = useNavigate()
+  const location = useLocation()
+  const from = (location.state as { from?: string } | null)?.from ?? '/'
+
+  const [document, setDocument] = useState('')
+  const [password, setPassword] = useState('')
+  const [showPassword, setShowPassword] = useState(false)
+  const [error, setError] = useState('')
+  const [busy, setBusy] = useState(false)
+
+  if (me) return <Navigate to={from} replace />
+
+  async function submit(event: FormEvent) {
+    event.preventDefault()
+    setError('')
+    setBusy(true)
+    try {
+      const { token } = await api.post<TokenResponse>('/auth/login', {
+        document_number: onlyDigits(document),
+        password,
+      })
+      await login(token)
+      navigate(from, { replace: true })
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : 'Erro inesperado.')
+      setBusy(false)
+    }
+  }
+
+  const digits = onlyDigits(document).length
+
+  return (
+    <div className="auth">
+      <div className="auth-theme"><ThemeCycleButton /></div>
+      <div className="auth-brand">
+        <img src="/logo-branca.png" alt="CDL Saúde" />
+        <span className="auth-badge"><Building2 size={14} /> Painel do associado</span>
+        <p>Seus funcionários, as guias deles e a rede de atendimento em um só lugar.</p>
+        <ul className="auth-points">
+          <li><Users /> Cadastre e importe seus funcionários</li>
+          <li><FileText /> Acompanhe as guias emitidas</li>
+          <li><MapPin /> Consulte a rede de atendimento</li>
+        </ul>
+      </div>
+
+      <div className="auth-card card">
+        <form onSubmit={submit} className="stack">
+          <div>
+            <h1>Entrar</h1>
+            <p className="muted">Use o CPF ou CNPJ do associado e sua senha.</p>
+          </div>
+          <Alert>{error}</Alert>
+          <Field label="CPF ou CNPJ">
+            <input
+              className="input"
+              inputMode="numeric"
+              autoComplete="username"
+              placeholder="00.000.000/0000-00"
+              value={formatDocument(document)}
+              onChange={(e) => setDocument(e.target.value)}
+              required
+            />
+          </Field>
+          <Field label="Senha">
+            <div className="input-group">
+              <input
+                className="input"
+                type={showPassword ? 'text' : 'password'}
+                autoComplete="current-password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+              />
+              <button
+                type="button"
+                className="btn btn-ghost btn-icon"
+                onClick={() => setShowPassword((v) => !v)}
+                aria-label={showPassword ? 'Esconder senha' : 'Mostrar senha'}
+              >
+                {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+              </button>
+            </div>
+          </Field>
+          <button className="btn btn-primary btn-block" disabled={busy || (digits !== 11 && digits !== 14) || !password}>
+            {busy ? 'Entrando…' : 'Entrar'}
+          </button>
+          <a className="btn btn-link" href={`${WEB_URL}/associate_panel/senha/esqueci`}>Esqueci minha senha</a>
+        </form>
+      </div>
+    </div>
+  )
+}
